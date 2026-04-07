@@ -1,0 +1,31 @@
+services:
+  # The Load Balancer (Like AWS ALB)
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:80"
+    depends_on:
+      - url-shortener-1
+      - url-shortener-2
+
+  # Backend Instances (Like AWS EC2)
+  url-shortener-1:
+    build: ./url-service
+    env_file: .env
+    environment:
+      - MACHINE_ID=1
+      - PUBLIC_URL=http://localhost:8000/
+    # Notice we removed the "ports" mapping here so they are completely hidden!
+
+  url-shortener-2:
+    build: ./url-service
+    env_file: .env
+    environment:
+      - MACHINE_ID=2
+      - PUBLIC_URL=http://localhost:8000/
+
+  # The Cache
+  redis-cache:
+    image: redis:alpine
+    ports:
+      - "6379:6379"

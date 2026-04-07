@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snip — Distributed URL Shortener</title>
+    <meta name="description" content="A scalable, distributed URL shortener powered by Snowflake IDs and Base62 encoding.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════════════════════════════════
+           RESET & FOUNDATION
+           ═══════════════════════════════════════════ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0c0c0e;
+            --surface: #151518;
+            --surface-raised: #1c1c21;
+            --border: #27272e;
+            --border-subtle: #1e1e24;
+            --text-primary: #ebebf0;
+            --text-secondary: #8a8a9a;
+            --text-muted: #55556a;
+            --accent: #c8a96e;
+            --accent-dim: #a3884f;
+            --accent-glow: rgba(200, 169, 110, 0.08);
+            --accent-glow-strong: rgba(200, 169, 110, 0.15);
+            --success: #5cb87a;
+            --error: #d4615a;
+            --radius: 10px;
+            --radius-lg: 16px;
+            --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-display: 'Playfair Display', Georgia, serif;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        html { font-size: 16px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* ═══════════════════════════════════════════
+           AMBIENT BACKGROUND
+           ═══════════════════════════════════════════ */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -40%;
+            left: -20%;
+            width: 80vw;
+            height: 80vw;
+            background: radial-gradient(circle, rgba(200, 169, 110, 0.03) 0%, transparent 65%);
+            pointer-events: none;
+            animation: drift 25s ease-in-out infinite alternate;
+        }
+        body::after {
+            content: '';
+            position: fixed;
+            bottom: -30%;
+            right: -15%;
+            width: 60vw;
+            height: 60vw;
+            background: radial-gradient(circle, rgba(140, 120, 200, 0.025) 0%, transparent 60%);
+            pointer-events: none;
+            animation: drift 20s ease-in-out infinite alternate-reverse;
+        }
+
+        @keyframes drift {
+            0%   { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(30px, -20px) scale(1.05); }
+        }
+
+        /* ═══════════════════════════════════════════
+           LAYOUT
+           ═══════════════════════════════════════════ */
+        .wrapper {
+            width: 100%;
+            max-width: 480px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ═══════════════════════════════════════════
+           HEADER / BRANDING
+           ═══════════════════════════════════════════ */
+        .brand {
+            text-align: center;
+            margin-bottom: 2.75rem;
+        }
+
+        .brand-name {
+            font-family: var(--font-display);
+            font-size: 2.25rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+
+        .brand-name em {
+            color: var(--accent);
+            font-style: italic;
+        }
+
+        .brand-tagline {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.75rem;
+            font-weight: 400;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        /* ═══════════════════════════════════════════
+           CARD
+           ═══════════════════════════════════════════ */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 2rem;
+            position: relative;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius-lg);
+            padding: 1px;
+            background: linear-gradient(
+                160deg,
+                rgba(200, 169, 110, 0.1) 0%,
+                transparent 40%,
+                transparent 60%,
+                rgba(200, 169, 110, 0.05) 100%
+            );
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        /* ═══════════════════════════════════════════
+           INPUT GROUP
+           ═══════════════════════════════════════════ */
+        .input-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 0.85rem 1rem;
+            font-family: var(--font-body);
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: var(--text-primary);
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            outline: none;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+
+        .input-field::placeholder {
+            color: var(--text-muted);
+            font-weight: 300;
+        }
+
+        .input-field:hover {
+            border-color: #3a3a45;
+        }
+
+        .input-field:focus {
+            border-color: var(--accent-dim);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        /* ═══════════════════════════════════════════
+           BUTTON
+           ═══════════════════════════════════════════ */
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.85rem 1.5rem;
+            font-family: var(--font-body);
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            color: #13130e;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 24px rgba(200, 169, 110, 0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0) scale(0.985);
+            box-shadow: none;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-icon {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn:hover .btn-icon {
+            transform: translateX(2px);
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(19, 19, 14, 0.3);
+            border-top-color: #13130e;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ═══════════════════════════════════════════
+           RESULT
+           ═══════════════════════════════════════════ */
+        .result {
+            margin-top: 1.5rem;
+            padding: 1.25rem;
+            background: var(--accent-glow);
+            border: 1px solid rgba(200, 169, 110, 0.12);
+            border-radius: var(--radius);
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+            transform: translateY(8px);
+        }
+
+        @keyframes slideUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-label {
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 0.6rem;
+        }
+
+        .result-link-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .result-link {
+            flex: 1;
+            font-family: 'Inter', monospace;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--accent);
+            text-decoration: none;
+            word-break: break-all;
+            transition: color var(--transition);
+        }
+
+        .result-link:hover {
+            color: #dbbf82;
+        }
+
+        .copy-btn {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color var(--transition), background var(--transition);
+            color: var(--text-secondary);
+        }
+
+        .copy-btn:hover {
+            border-color: var(--accent-dim);
+            background: var(--accent-glow-strong);
+            color: var(--accent);
+        }
+
+        .copy-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .copy-toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(12px);
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            color: var(--success);
+            font-size: 0.78rem;
+            font-weight: 500;
+            padding: 0.6rem 1.2rem;
+            border-radius: 100px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 100;
+        }
+
+        .copy-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ═══════════════════════════════════════════
+           ERROR STATE
+           ═══════════════════════════════════════════ */
+        .error-msg {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.8rem;
+            color: var(--error);
+            background: rgba(212, 97, 90, 0.08);
+            border: 1px solid rgba(212, 97, 90, 0.15);
+            border-radius: var(--radius);
+            animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+        }
+
+        /* ═══════════════════════════════════════════
+           FOOTER
+           ═══════════════════════════════════════════ */
+        .footer {
+            text-align: center;
+            margin-top: 2.5rem;
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            line-height: 1.7;
+            letter-spacing: 0.03em;
+        }
+
+        .footer span {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .footer .dot {
+            width: 3px;
+            height: 3px;
+            background: var(--border);
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* ═══════════════════════════════════════════
+           HIDDEN UTILITY
+           ═══════════════════════════════════════════ */
+        .hidden { display: none !important; }
+
+        /* ═══════════════════════════════════════════
+           RESPONSIVE
+           ═══════════════════════════════════════════ */
+        @media (max-width: 520px) {
+            body { padding: 1.25rem; }
+            .card { padding: 1.5rem; }
+            .brand-name { font-size: 1.85rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <!-- Branding -->
+        <header class="brand">
+            <h1 class="brand-name"><em>Snip</em></h1>
+            <p class="brand-tagline">Distributed URL Shortener</p>
+        </header>
+
+        <!-- Main Card -->
+        <div class="card" id="mainCard">
+            <div class="input-group">
+                <label for="longUrl" class="input-label">Destination URL</label>
+                <input
+                    id="longUrl"
+                    type="url"
+                    placeholder="https://example.com/your-very-long-url"
+                    class="input-field"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+            </div>
+
+            <button id="shortenBtn" class="btn" onclick="shorten()">
+                <span id="btnLabel">Shorten Link</span>
+                <svg class="btn-icon" id="btnArrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="8" x2="13" y2="8"/>
+                    <polyline points="9,4 13,8 9,12"/>
+                </svg>
+            </button>
+
+            <!-- Result (hidden by default) -->
+            <div id="resultArea" class="hidden">
+                <div class="result">
+                    <p class="result-label">Your shortened link</p>
+                    <div class="result-link-row">
+                        <a id="shortUrl" href="#" target="_blank" rel="noopener" class="result-link"></a>
+                        <button class="copy-btn" onclick="copyLink()" title="Copy to clipboard" aria-label="Copy link">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="5" y="5" width="9" height="9" rx="2"/>
+                                <path d="M5 11H4a2 2 0 01-2-2V4a2 2 0 012-2h5a2 2 0 012 2v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error -->
+            <div id="errorArea" class="hidden"></div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <span>Snowflake IDs</span>
+            <span class="dot"></span>
+            <span>Base62 Encoding</span>
+            <span class="dot"></span>
+            <span>Supabase</span>
+        </footer>
+    </div>
+
+    <!-- Copy Toast -->
+    <div class="copy-toast" id="copyToast">Copied to clipboard</div>
+
+    <script>
+        const inputEl    = document.getElementById('longUrl');
+        const btnEl      = document.getElementById('shortenBtn');
+        const btnLabel   = document.getElementById('btnLabel');
+        const btnArrow   = document.getElementById('btnArrow');
+        const resultArea = document.getElementById('resultArea');
+        const shortUrlEl = document.getElementById('shortUrl');
+        const errorArea  = document.getElementById('errorArea');
+        const copyToast  = document.getElementById('copyToast');
+
+        // Submit on Enter
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') shorten();
+        });
+
+        async function shorten() {
+            const longUrl = inputEl.value.trim();
+            if (!longUrl) {
+                inputEl.focus();
+                return;
+            }
+
+            // Reset states
+            resultArea.classList.add('hidden');
+            errorArea.classList.add('hidden');
+            setLoading(true);
+
+            try {
+                const response = await fetch('http://localhost:8000/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ long_url: longUrl })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => null);
+                    throw new Error(err?.detail || `Server error (${response.status})`);
+                }
+
+                const data = await response.json();
+
+                shortUrlEl.textContent = data.short_url;
+                shortUrlEl.href = data.short_url;
+                resultArea.classList.remove('hidden');
+
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function setLoading(on) {
+            btnEl.disabled = on;
+            if (on) {
+                btnArrow.classList.add('hidden');
+                btnLabel.textContent = 'Shortening…';
+                const spinner = document.createElement('div');
+                spinner.className = 'spinner';
+                spinner.id = 'loadingSpinner';
+                btnEl.appendChild(spinner);
+            } else {
+                btnLabel.textContent = 'Shorten Link';
+                btnArrow.classList.remove('hidden');
+                const sp = document.getElementById('loadingSpinner');
+                if (sp) sp.remove();
+            }
+        }
+
+        function showError(msg) {
+            errorArea.innerHTML = `<div class="error-msg">${msg}</div>`;
+            errorArea.classList.remove('hidden');
+        }
+
+        function copyLink() {
+            const url = shortUrlEl.textContent;
+            navigator.clipboard.writeText(url).then(() => {
+                copyToast.classList.add('show');
+                setTimeout(() => copyToast.classList.remove('show'), 2000);
+            });
+        }
+    </script>
+</body>
+</html>
