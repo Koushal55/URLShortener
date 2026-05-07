@@ -514,7 +514,7 @@
             setLoading(true);
 
             try {
-                const response = await fetch('http://localhost:8000/shorten', {
+                const response = await fetch('http://13.53.51.182:8000/shorten', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ long_url: longUrl })
@@ -559,14 +559,26 @@
             errorArea.innerHTML = `<div class="error-msg">${msg}</div>`;
             errorArea.classList.remove('hidden');
         }
-
-        function copyLink() {
-            const url = shortUrlEl.textContent;
-            navigator.clipboard.writeText(url).then(() => {
-                copyToast.classList.add('show');
-                setTimeout(() => copyToast.classList.remove('show'), 2000);
-            });
-        }
+       
+	function copyLink() {
+    const url = document.getElementById('shortUrl').textContent;
+    
+    // Create a hidden input to "force" the copy
+    const textArea = document.createElement("textarea");
+    textArea.value = url;
+    document.body.appendChild(textArea);
+    textArea.select();
+    
+    try {
+        document.execCommand('copy'); // Works on HTTP and IPs
+        copyToast.classList.add('show');
+        setTimeout(() => copyToast.classList.remove('show'), 2000);
+    } catch (err) {
+        console.error('Unable to copy', err);
+    }
+    
+    document.body.removeChild(textArea);
+}
     </script>
 </body>
 </html>

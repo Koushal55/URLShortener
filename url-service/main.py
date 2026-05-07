@@ -31,7 +31,7 @@ class URLRequest(BaseModel):
     long_url: str
 
 # 3. API Endpoints
-PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:8000/")
+PUBLIC_URL = "http://13.53.51.182:8000/"
 
 @app.post("/shorten")
 async def shorten_url(request: URLRequest):

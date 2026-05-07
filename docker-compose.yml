@@ -3,7 +3,10 @@ services:
   api-gateway:
     build: ./api-gateway
     ports:
-      - "8000:80"
+      - "80:80"
+      - "8000:8000"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
     depends_on:
       - url-shortener-1
       - url-shortener-2
